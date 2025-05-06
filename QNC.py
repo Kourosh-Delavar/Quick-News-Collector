@@ -5,32 +5,84 @@ from fpdf import FPDF
 
 class Collector():
     
-    def __init__(self, urls_source_path: str, collection_path: str) -> None:
-        self.urls_source_path: str = urls_source_path
+    def __init__(self,
+                 api_source_path: str,
+                 collection_path: str,
+                 category: list[str],
+                 lang: str = 'en') -> None:
+        
+        self.api_source_path: str = api_source_path
         self.collection_path: str = collection_path
-            
-    def _filewriter(self, response: dict) -> None:
+        self.category: list[str] = category
+        self.lang: str = lang
+             
+    def _filewriter(self, response: str) -> None:
         with open(self.collection_path, 'a+', encoding='utf-8') as file:
-            file.write(response[...])
+            file.write(response)
             
-    def fetchdata(self) -> None:   
-        with open(self.urls_source_path, 'r') as file:    
-            for line in file:
-                url: str = line.strip()
-                response: dict = requests.get(url=url).json()
-                self._filewriter(response=response)
-
+    def _fetch(self, url: str, api_key: str) -> str:
+        resp_dict: dict = {}
+        text: str = ""
+        for category in self.category:
+            
+            params: dict = {
+                'apiKey': api_key,
+                'category': self.category,
+                'language': self.lang
+            }
+            
+            response = requests.get(url=url, params=params).json()
+            if response.status_code == 200:
+                print("Response received successfully")
+                for article in response['articles']:
+                    # NOTE: This takes so much RAM 
+                    text = text + article['description'] + "\n" 
+            else:
+                print(f"Failed to receive response from {url}. Status code : {response.status_code}")    
+        
+        return text    
+            
+    def _fetch_currentsapi(self, api_key: str) -> str:        
+        url: str = "https://api.currentsapi.services/v1/latest-news"
+        currentsapi_output: str = self._fetch(url=url, api_key=api_key)
+        
+        return currentsapi_output
+        
+    def _fetch_gnews(self, api_key: str) -> str:
+        url: str = "https://gnews.io/api/v4/search"
+        gnews_output: str = self._fetch(url=url, api_key=api_key)
+        
+        return gnews_output
+        
+    def _fetch_newsapi(self, api_key: str) -> str:
+        url: str = "https://gnews.io/api/v4/search"
+        newsapi_output: str = self._fetch(url=url, api_key=api_key)
+        
+        return newsapi_output
+    
+    # FIXME: This needs to be fixed with its api keys setting 
+    def final_output(self) -> str: 
+        currentsapi_output: str = self._fetch_currentsapi(api_key=...) 
+        gnews_output: str = self._fetch_gnews(api_key=...) 
+        newsapi_output: str = self._fetch_newsapi(api_key=...) 
+        final_output: str = "\n".join([currentsapi_output,
+                                       gnews_output,
+                                       newsapi_output])
+        
+        return final_output
+    
 class Summarizer(Collector):
-    default_prompt: str = """
-                    Please summarize the following text in the style of newspaper headlines.
-                    preserve details and usefull insights for each point:
-                """
             
     def __init__(self, collection_path: str, model: str) -> None: 
         super().__init__(collection_path)
         self.model = model
     
-    def _makeprompt(self, ask: str = default_prompt) -> str:
+    def _makeprompt(self) -> str:
+        ask: str = (
+                    "Please summarize the following text in the style of newspaper headlines,"
+                    " preserving all the details and usefull insights for each point:"
+                )
+    
         with open(self.collection_path, 'r') as file:
             text: str = file.read()
             prompt: str = ask + '\n' + text
@@ -46,6 +98,7 @@ class Summarizer(Collector):
         pipe = pipeline("text-generation", model=self.model)
         output: list = pipe(messages)
         generated_text: str = output[0]['generated_text'] 
+        
         return generated_text
     
 class ExportResults():
@@ -79,5 +132,4 @@ class ExportResults():
             print("Message sent successfully")
         else:
             print(f"Failed to send message. Status code : {response.status_code}")
-        
         
